@@ -4,6 +4,7 @@
 #include <EEPROM.h>
 #define ARRAY_SIZE(array) ((sizeof(array))/(sizeof(array[0])))
 auto timer = timer_create_default();
+auto autoOffTimerAfterDisplay = timer_create_default();
 
 int oHighBeam = 11; // Output high beam
 int oLowBeam = 10;  // Output low beam
@@ -32,7 +33,8 @@ int lastDisplayOnState;
 
 int turnSignalIntervalOn = 550; //flash turn signal every ms
 int turnSignalIntervalOff = 350; //wait duration between two turn signals
-unsigned long TurnOffAfterSeconds = 30; //auto off when no manual comands (button or turn signals)
+unsigned long ShutDownAfterDisplayInSeconds = 1; //auto off when the display is turned off
+unsigned long TurnOffAfterSeconds = 90; //auto off when no manual comands (button or turn signals)
 unsigned long sinceLastCommand; //last millis date/time of the last command (when we pushed the one touch button / turn signals)
 
 //short blinks every 5 sec flashes
@@ -81,7 +83,6 @@ void setup() {
   button.attachLongPressStop(longTap);
   button.attachMultiClick(multipleTap);
   sinceLastCommand = millis();
-  restorePreferences();
 }
 
 void loop() {
@@ -96,6 +97,8 @@ void loop() {
   }
   loopTurnSignals();
   timer.tick();
+  autoOffTimerAfterDisplay.tick();
+  
 }
 
 void digitalWritePins(int state, int p0=0,int p1=0, int p2=0, int p3=0, int p4=0, int p5=0, int p6=0, int p7=0, int p8=0, int p9=0, int p10=0, int p11=0, int p12=0) { 
@@ -165,18 +168,7 @@ bool checkAutoOff() {
   }
   return false;
 }
-void checkDisplayState(){
-  int displayOnState = digitalRead(iDisplayOn);
-  if (displayOnState != lastDisplayOnState) {
-    lastDisplayOnState = displayOnState;
-    if (displayOnState > 200){
-      restorePreferences();
-    }
-    else {
-      savePreferences();
-    }
-  }
-}
+
 void savePreferences(){
   int state = (int)preferences;
     ;
@@ -375,7 +367,27 @@ void longTap() {
   digitalWritePins(LOW, oHighBeam, oLowBeam, oYLR, oDLR, oCharger, oTurnLeft, oTurnRight, oPositionLeft, oPositionRight, oLoudHorn);
   updateLedLight();
 }
-
+bool autoTurnOff(void *argument /* optional argument given to in/at/every */) {
+  shouldStillBlinkRightTurnSignal = 1;
+  autoOffTimerAfterDisplay.cancel();
+  longTap();
+}
+void checkDisplayState(){
+  int displayOnState = analogRead(iDisplayOn);
+  if (displayOnState != lastDisplayOnState) {
+    lastDisplayOnState = displayOnState;
+    if (displayOnState > 200){
+      restorePreferences();
+      autoOffTimerAfterDisplay.cancel();
+    }
+    else {
+      savePreferences();
+      if ((preferences & AutoRestore) != 0) {
+        autoOffTimerAfterDisplay.in(ShutDownAfterDisplayInSeconds * 1000, autoTurnOff);
+      }
+    }
+  }
+}
 void updateLedLight(){
   int turnLeft = digitalRead(oTurnLeft) == HIGH;
   int turnRight = digitalRead(oTurnRight) == HIGH;
