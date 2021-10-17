@@ -47,10 +47,10 @@ unsigned long blinkXTimes = 4; //how many times we should blink (for every 5s fl
 int shouldStillBlinkLeftTurnSignal;
 int shouldStillBlinkRightTurnSignal;
 //store the YLR / DLR state to be saved/restored automatically
-enum Preferences { None = 0, AutoRestore = 1, LowBeam = 2, HighBeam = 4, DLR = 8, YLR = 16, DLRFirstTap = 32, Charging = 64, WLED = 128, YLRFlash = 256, Turn3x = 512 };
+enum State { None = 0, AutoRestore = 1, LowBeam = 2, HighBeam = 4, DLR = 8, YLR = 16, DLRFirstTap = 32, Charging = 64, WLED = 128, YLRFlash = 256, Turn3x = 512 };
 
-Preferences preferences = (Preferences)(WLED | DLRFirstTap | YLRFlash | Turn3x | AutoRestore);
-
+State currentState = (State)(WLED | DLRFirstTap | YLRFlash | Turn3x | AutoRestore);
+int stateEEPROMAddress = 1;//the address where we save the current state
 
 OneButton button = OneButton(iSmartButton, false, false);
 
@@ -83,6 +83,9 @@ void setup() {
   button.attachLongPressStop(longTap);
   button.attachMultiClick(multipleTap);
   sinceLastCommand = millis();
+  if ((int)readState()==0) {
+    saveState()
+  }
 }
 
 void loop() {
@@ -105,8 +108,8 @@ void digitalWritePins(int state, int p0=0,int p1=0, int p2=0, int p3=0, int p4=0
   int pins[] = {p0, p1, p2, p3, p4, p5, p6, p7, p8, p9, p10, p11, p12}; 
   for(int i=ARRAY_SIZE(pins);--i>=0;) if (pins[i] != 0) { digitalWrite(pins[i], state); } 
 }
-void digitalWriteStatesToPins(int pins[]) { for(int i=0;i<ARRAY_SIZE(pins);i+=2) if (pins[i] != 0) { digitalWrite(pins[i], pins[i+1]); } }
-void digitalWriteStatesToPins(int p0=0, int v0=0, int p1=0, int v1=0, int p2=0, int v2=0, int p3=0, int v3=0, int p4=0, int v4=0,
+void digitalWriteStateToPins(int pins[]) { for(int i=0;i<ARRAY_SIZE(pins);i+=2) if (pins[i] != 0) { digitalWrite(pins[i], pins[i+1]); } }
+void digitalWriteStateToPins(int p0=0, int v0=0, int p1=0, int v1=0, int p2=0, int v2=0, int p3=0, int v3=0, int p4=0, int v4=0,
                               int p5=0, int v5=0, int p6=0, int v6=0, int p7=0, int v7=0, int p8=0, int v8=0, int p9=0, int v9=0,
                               int p10=0, int v10=0, int p11=0, int v11=0, int p12=0, int v12=0) {
   int pins[]={p0, v0, p1, v1, p2, v2, p3, v3, p4, v4, p5, v5, p6, v6, p7, v7, p8, v8, p9, v9, p10, v10, p11, v11, p12, v12};
@@ -134,7 +137,7 @@ bool blinkLoop(unsigned long now) {
         bool completed = lastBlinkState >= blinkXTimes * 2 - 1;
         int toggleLeftTurnSignal = completed ? (analogRead(iTurnLeft) < 200 ? LOW : HIGH) : LOW;
         int toggleRightTurnSignal = completed ? (analogRead(iTurnRight) < 200 ? LOW : HIGH) : LOW;
-        int toggleYLR = completed ? ((preferences & YLR) != 0 || analogRead(iHorn) > 200 ? HIGH : LOW) : LOW;
+        int toggleYLR = completed ? ((currentState & YLR) != 0 || analogRead(iHorn) > 200 ? HIGH : LOW) : LOW;
 
         digitalWritePins(toggleLeftTurnSignal, oPositionLeft, oTurnLeft);
         digitalWritePins(toggleRightTurnSignal, oPositionRight, oTurnRight);
@@ -155,7 +158,7 @@ bool checkAutoOff() {
   unsigned long now = millis();
   if (now >= sinceLastCommand + TurnOffAfterSeconds * 1000) //turn off at 1 minute. Replace it to 20 minutes!
   {
-    savePreferences();
+    saveState();
     digitalWritePins(LOW, oHighBeam, oLowBeam, oYLR, oDLR, oCharger, oTurnLeft, oTurnRight, oPositionLeft, oPositionRight, oLoudHorn);
     lastBlinkState = 0;
     headLightState = AutoOff; //auto off
@@ -169,28 +172,28 @@ bool checkAutoOff() {
   return false;
 }
 
-void savePreferences(){
-  int state = (int)preferences;
+void saveState(){
+  int state = (int)currentState;
     ;
-  int oldState = readSavedPreferences();
+  int oldState = readSavedState();
   if (oldState != state) {
-    EEPROM.write(0, state);
+    EEPROM.write(stateEEPROMAddress, state);
   }
 }
-Preferences readSavedPreferences() {
-  Preferences prefs = (Preferences)EEPROM.read(0);
-  return prefs;
+State readSavedState() {
+  State readState = (State)EEPROM.read(stateEEPROMAddress);
+  return readState;
 }
-void restorePreferences() {
-  preferences = readSavedPreferences();
-  if ((preferences & AutoRestore) != 0) { //auto-save & restore state
-    digitalWrite(oLowBeam, (preferences & LowBeam) != 0 ? HIGH : LOW);
-    digitalWrite(oHighBeam, (preferences & HighBeam) != 0 ? HIGH : LOW);
-    digitalWrite(oDLR, (preferences & DLR) != 0 ? HIGH : LOW);
-    digitalWrite(oYLR, (preferences & YLR) != 0 ? HIGH : LOW);
-    digitalWrite(oCharger, (preferences & Charging) != 0 ? HIGH : LOW);
-    headLightState = (preferences & (LowBeam | HighBeam | DLR | YLR)) != 0 ? AutoOn : AutoOff;
-    if ((preferences & Turn3x) != 0) {
+void restoreState() {
+  currentState = readSavedState();
+  if ((currentState & AutoRestore) != 0) { //auto-save & restore state
+    digitalWrite(oLowBeam, (currentState & LowBeam) != 0 ? HIGH : LOW);
+    digitalWrite(oHighBeam, (currentState & HighBeam) != 0 ? HIGH : LOW);
+    digitalWrite(oDLR, (currentState & DLR) != 0 ? HIGH : LOW);
+    digitalWrite(oYLR, (currentState & YLR) != 0 ? HIGH : LOW);
+    digitalWrite(oCharger, (currentState & Charging) != 0 ? HIGH : LOW);
+    headLightState = (currentState & (LowBeam | HighBeam | DLR | YLR)) != 0 ? AutoOn : AutoOff;
+    if ((currentState & Turn3x) != 0) {
        shouldStillBlinkLeftTurnSignal = shouldStillBlinkRightTurnSignal = 2;
     }
     updateLedLight();
@@ -203,20 +206,20 @@ void doubleTap() {
   int shouldCharge = digitalRead(oCharger) != HIGH;
 
   if (shouldCharge) {
-    preferences = (Preferences)(preferences | Charging);//turn on Charging flag
-    if ((preferences & Turn3x) != 0) {
+    currentState = (State)(currentState | Charging);//turn on Charging flag
+    if ((currentState & Turn3x) != 0) {
       shouldStillBlinkLeftTurnSignal = shouldStillBlinkRightTurnSignal = 2;
     }
     digitalWritePins(HIGH, oCharger);
   }
   else {   
-       preferences = (Preferences)(preferences & ~Charging);//turn off Charging flag
-    if ((preferences & Turn3x) != 0) {
+       currentState = (State)(currentState & ~Charging);//turn off Charging flag
+    if ((currentState & Turn3x) != 0) {
       shouldStillBlinkLeftTurnSignal = shouldStillBlinkRightTurnSignal = 1;
     }
     digitalWritePins(LOW, oCharger);
   }
-  savePreferences();
+  saveState();
   updateLedLight();
 }
 void singleTap() {
@@ -224,42 +227,42 @@ void singleTap() {
   sinceLastCommand = millis();
   int shouldHighBeam = digitalRead(oLowBeam) == HIGH && digitalRead(oHighBeam) == LOW;
   if (shouldHighBeam) {    
-    preferences = (Preferences)(preferences | HighBeam | LowBeam);//turn on HighBeam | LowBeam flag
-    if ((preferences & Turn3x) != 0) {
+    currentState = (State)(currentState | HighBeam | LowBeam);//turn on HighBeam | LowBeam flag
+    if ((currentState & Turn3x) != 0) {
       shouldStillBlinkLeftTurnSignal = shouldStillBlinkRightTurnSignal = 2;
     }
     digitalWritePins(HIGH, oHighBeam, oLowBeam);
-    savePreferences();
+    saveState();
   }
   else {
     if (digitalRead(oLowBeam) == LOW && digitalRead(oHighBeam) == LOW && digitalRead(oDLR) == LOW) {
-        if ((preferences & DLRFirstTap) != 0) {
-          preferences = (Preferences)(preferences & ~YLR);//turn off YLR flag
-          preferences = (Preferences)(preferences | DLR);//turn on DLR flag
+        if ((currentState & DLRFirstTap) != 0) {
+          currentState = (State)(currentState & ~YLR);//turn off YLR flag
+          currentState = (State)(currentState | DLR);//turn on DLR flag
           digitalWritePins(HIGH, oDLR);
           digitalWritePins(LOW, oYLR);
-          savePreferences();
+          saveState();
         }
         else {
-          preferences = (Preferences)(preferences & ~HighBeam);//turn off HighBeam flag
-          preferences = (Preferences)(preferences | LowBeam);//turn on LowBeam flag
+          currentState = (State)(currentState & ~HighBeam);//turn off HighBeam flag
+          currentState = (State)(currentState | LowBeam);//turn on LowBeam flag
           digitalWritePins(LOW, oHighBeam);
           digitalWritePins(HIGH, oLowBeam);
-          savePreferences();
+          saveState();
         }
-        if ((preferences & Turn3x) != 0) {
+        if ((currentState & Turn3x) != 0) {
           //blink once the turn signals when you turn it on, for the first time
           shouldStillBlinkLeftTurnSignal = 1;
           shouldStillBlinkRightTurnSignal = 1;
         }
     }
     else {
-      preferences = (Preferences)(preferences & ~HighBeam);//turn off HighBeam flag
-      preferences = (Preferences)(preferences | LowBeam);//turn on LowBeam flag
+      currentState = (State)(currentState & ~HighBeam);//turn off HighBeam flag
+      currentState = (State)(currentState | LowBeam);//turn on LowBeam flag
       digitalWritePins(LOW, oHighBeam);
       digitalWritePins(HIGH, oLowBeam);
-      savePreferences();
-      if ((preferences & Turn3x) != 0) {
+      saveState();
+      if ((currentState & Turn3x) != 0) {
         shouldStillBlinkLeftTurnSignal = shouldStillBlinkRightTurnSignal = 2;
       }
     }
@@ -279,26 +282,26 @@ void multipleTap()
         int shouldDLR = digitalRead(oDLR) == HIGH;
         int shouldYLR = digitalRead(oYLR) == HIGH;
         if (shouldYLR) {    
-          preferences = (Preferences)(preferences & ~(YLR|DLR));//turn off YLR and DLR flags
+          currentState = (State)(currentState & ~(YLR|DLR));//turn off YLR and DLR flags
           digitalWritePins(LOW, oDLR, oYLR);
           shouldStillBlinkLeftTurnSignal = shouldStillBlinkRightTurnSignal = 1;
         }
         else if (shouldDLR) {
-          preferences = (Preferences)(preferences & ~DLR);//turn off DLR flag
-          preferences = (Preferences)(preferences | YLR);//turn on YLR flag
+          currentState = (State)(currentState & ~DLR);//turn off DLR flag
+          currentState = (State)(currentState | YLR);//turn on YLR flag
           digitalWritePins(LOW, oDLR);
           digitalWritePins(HIGH, oYLR);
           shouldStillBlinkLeftTurnSignal = shouldStillBlinkRightTurnSignal = 3;
         }
         else {
-          preferences = (Preferences)(preferences & ~YLR);//turn off YLR flag
-          preferences = (Preferences)(preferences | DLR);//turn on DLR flag
+          currentState = (State)(currentState & ~YLR);//turn off YLR flag
+          currentState = (State)(currentState | DLR);//turn on DLR flag
           digitalWritePins(HIGH, oDLR);
           digitalWritePins(LOW, oYLR);
           shouldStillBlinkLeftTurnSignal = shouldStillBlinkRightTurnSignal = 2;
         }
         updateLedLight();
-        savePreferences();
+        saveState();
         break;
     }
     case 4: {
@@ -306,9 +309,9 @@ void multipleTap()
         ///This can be useful during the day when you don't want to consume power with the low beam.
         ///Disabling this feature will skip the DLR step and start the low beam directly
         
-        preferences = (Preferences)(preferences ^ DLRFirstTap);
-        savePreferences();
-        shouldStillBlinkLeftTurnSignal = shouldStillBlinkRightTurnSignal = (preferences & DLRFirstTap) != 0 ? 2 : 1;
+        currentState = (State)(currentState ^ DLRFirstTap);
+        saveState();
+        shouldStillBlinkLeftTurnSignal = shouldStillBlinkRightTurnSignal = (currentState & DLRFirstTap) != 0 ? 2 : 1;
       }
       break;
     case 5: {
@@ -316,18 +319,18 @@ void multipleTap()
         /// to see where the button is in the dark or e.g. when you suddenly enter a tunnel. 
         /// However, at times, this might not be useful, so you could turn this feature off 
         
-        preferences = (Preferences)(preferences ^ WLED);
-        savePreferences();
-        shouldStillBlinkLeftTurnSignal = shouldStillBlinkRightTurnSignal = (preferences & WLED) != 0 ? 2 : 1;
+        currentState = (State)(currentState ^ WLED);
+        saveState();
+        shouldStillBlinkLeftTurnSignal = shouldStillBlinkRightTurnSignal = (currentState & WLED) != 0 ? 2 : 1;
       }
       break;
     case 6: {
         ///6* The headlamp flashes the yellow circle every 5 seconds as the car drivers mostly notice 
         ///the changes in their landscape. This is a safety feature. However it could be considered 
         ///annoying to some, and hence it can be easily toggled when needed.
-        preferences = (Preferences)(preferences ^ YLRFlash);
-        savePreferences();
-        shouldStillBlinkLeftTurnSignal = shouldStillBlinkRightTurnSignal = (preferences & YLRFlash) != 0 ? 2 : 1;
+        currentState = (State)(currentState ^ YLRFlash);
+        saveState();
+        shouldStillBlinkLeftTurnSignal = shouldStillBlinkRightTurnSignal = (currentState & YLRFlash) != 0 ? 2 : 1;
       }
     break;
     case 7: {
@@ -336,9 +339,9 @@ void multipleTap()
         ///Many cars have this feature, however, it can be turned off when not desired.
         ///Disabling this also disables the yellow circle/turn signals flash upon turning ON/OFF
         
-        preferences = (Preferences)(preferences ^ Turn3x);
-        savePreferences();
-        shouldStillBlinkLeftTurnSignal = shouldStillBlinkRightTurnSignal = (preferences & Turn3x) != 0 ? 3 : 1;
+        currentState = (State)(currentState ^ Turn3x);
+        saveState();
+        shouldStillBlinkLeftTurnSignal = shouldStillBlinkRightTurnSignal = (currentState & Turn3x) != 0 ? 3 : 1;
     }
     break;
     case 8: {
@@ -347,19 +350,19 @@ void multipleTap()
        ///Turning off this feature means every time you need to manually turn on/off the headlight, 
        ///except the 6-9 settings which are still saved
        
-       preferences = (Preferences)(preferences ^ AutoRestore);
-       savePreferences();
-       shouldStillBlinkLeftTurnSignal = shouldStillBlinkRightTurnSignal = (preferences & AutoRestore) != 0 ? 4 : 1;
+       currentState = (State)(currentState ^ AutoRestore);
+       saveState();
+       shouldStillBlinkLeftTurnSignal = shouldStillBlinkRightTurnSignal = (currentState & AutoRestore) != 0 ? 4 : 1;
      }
      break;
   }
 }
 void longTap() {
-  savePreferences();
+  saveState();
   sinceLastCommand = 0;
   headLightState = ManualOff; //manual off
-  preferences = (Preferences)(preferences & ~(LowBeam | HighBeam | DLR | YLR | Charging));//turn off LowBeam, HighBeam, DLR, YLR, Charging flag
-  if ((preferences & Turn3x) != 0) {
+  currentState = (State)(currentState & ~(LowBeam | HighBeam | DLR | YLR | Charging));//turn off LowBeam, HighBeam, DLR, YLR, Charging flag
+  if ((currentState & Turn3x) != 0) {
     shouldStillBlinkLeftTurnSignal = 1;
     shouldStillBlinkRightTurnSignal = 1;
   }
@@ -377,12 +380,12 @@ void checkDisplayState(){
   if (displayOnState != lastDisplayOnState) {
     lastDisplayOnState = displayOnState;
     if (displayOnState > 200){
-      restorePreferences();
+      restoreState();
       autoOffTimerAfterDisplay.cancel();
     }
     else {
-      savePreferences();
-      if ((preferences & AutoRestore) != 0) {
+      saveState();
+      if ((currentState & AutoRestore) != 0) {
         autoOffTimerAfterDisplay.in(ShutDownAfterDisplayInSeconds * 1000, autoTurnOff);
       }
     }
@@ -392,31 +395,31 @@ void updateLedLight(){
   int turnLeft = digitalRead(oTurnLeft) == HIGH;
   int turnRight = digitalRead(oTurnRight) == HIGH;
   if (turnLeft) {
-      digitalWriteStatesToPins(oLedRED, HIGH, oLedGREEN, LOW, oLedBLUE, LOW, oYLR, HIGH, oPositionLeft, HIGH);
+      digitalWriteStateToPins(oLedRED, HIGH, oLedGREEN, LOW, oLedBLUE, LOW, oYLR, HIGH, oPositionLeft, HIGH);
   }
   if (turnRight) {
-      digitalWriteStatesToPins(oLedRED, HIGH, oLedGREEN, LOW, oLedBLUE, LOW, oYLR, HIGH, oPositionRight, HIGH);
+      digitalWriteStateToPins(oLedRED, HIGH, oLedGREEN, LOW, oLedBLUE, LOW, oYLR, HIGH, oPositionRight, HIGH);
   }
   if (turnLeft || turnRight){
     
   }
   else if (digitalRead(oLoudHorn) == HIGH) {
-      digitalWriteStatesToPins(oLedRED, HIGH, oLedGREEN, LOW, oLedBLUE, LOW, oYLR, HIGH, oPositionLeft, HIGH, oPositionRight, HIGH);
+      digitalWriteStateToPins(oLedRED, HIGH, oLedGREEN, LOW, oLedBLUE, LOW, oYLR, HIGH, oPositionLeft, HIGH, oPositionRight, HIGH);
   }
   else if (digitalRead(oHighBeam) == HIGH) {
-      digitalWriteStatesToPins(oLedRED, LOW, oLedGREEN, digitalRead(oCharger), oLedBLUE, HIGH, oYLR, (preferences & YLR) != 0 ? HIGH : LOW, oPositionLeft, HIGH, oPositionRight, HIGH);
+      digitalWriteStateToPins(oLedRED, LOW, oLedGREEN, digitalRead(oCharger), oLedBLUE, HIGH, oYLR, (currentState & YLR) != 0 ? HIGH : LOW, oPositionLeft, HIGH, oPositionRight, HIGH);
   }
   else if (digitalRead(oLowBeam) == HIGH) {
-      digitalWriteStatesToPins(oLedRED, digitalRead(oCharger), oLedGREEN, HIGH, oLedBLUE, LOW, oYLR, (preferences & YLR) != 0 ? HIGH : LOW, oPositionLeft, HIGH, oPositionRight, HIGH);
+      digitalWriteStateToPins(oLedRED, digitalRead(oCharger), oLedGREEN, HIGH, oLedBLUE, LOW, oYLR, (currentState & YLR) != 0 ? HIGH : LOW, oPositionLeft, HIGH, oPositionRight, HIGH);
   }
   else if (digitalRead(oCharger) == HIGH) {
-      digitalWriteStatesToPins(oLedRED, HIGH, oLedGREEN, HIGH, oLedBLUE, LOW, oYLR, (preferences & YLR) != 0 ? HIGH : LOW, oPositionLeft, (preferences & YLR) != 0 ? HIGH : LOW, oPositionRight, (preferences & YLR) != 0 ? HIGH : LOW);
+      digitalWriteStateToPins(oLedRED, HIGH, oLedGREEN, HIGH, oLedBLUE, LOW, oYLR, (currentState & YLR) != 0 ? HIGH : LOW, oPositionLeft, (currentState & YLR) != 0 ? HIGH : LOW, oPositionRight, (currentState & YLR) != 0 ? HIGH : LOW);
   }
   else {
-    if ((preferences & WLED) != 0) {
-      digitalWriteStatesToPins(oLedRED, HIGH, oLedGREEN, HIGH, oLedBLUE, HIGH, oYLR, (preferences & YLR) != 0 ? HIGH : LOW, oPositionLeft, (preferences & YLR) != 0 ? HIGH : LOW, oPositionRight, (preferences & YLR) != 0 ? HIGH : LOW);
+    if ((currentState & WLED) != 0) {
+      digitalWriteStateToPins(oLedRED, HIGH, oLedGREEN, HIGH, oLedBLUE, HIGH, oYLR, (currentState & YLR) != 0 ? HIGH : LOW, oPositionLeft, (currentState & YLR) != 0 ? HIGH : LOW, oPositionRight, (currentState & YLR) != 0 ? HIGH : LOW);
     } else {
-      digitalWriteStatesToPins(oLedRED, LOW, oLedGREEN, LOW, oLedBLUE, LOW, oYLR, (preferences & YLR) != 0 ? HIGH : LOW, oPositionLeft, (preferences & YLR) != 0 ? HIGH : LOW, oPositionRight, (preferences & YLR) != 0 ? HIGH : LOW);
+      digitalWriteStateToPins(oLedRED, LOW, oLedGREEN, LOW, oLedBLUE, LOW, oYLR, (currentState & YLR) != 0 ? HIGH : LOW, oPositionLeft, (currentState & YLR) != 0 ? HIGH : LOW, oPositionRight, (currentState & YLR) != 0 ? HIGH : LOW);
     }
   }
 }
@@ -441,8 +444,8 @@ bool turnSignalPositionTick(void *argument /* optional argument given to in/at/e
   }
   else {
     //still blink 3 times after you stop the turn signals
-    shouldStillBlinkLeftTurnSignal = prevTurnLeftState == HIGH && !stillTurnsRight && (preferences & Turn3x) != 0 ? 3 : shouldStillBlinkLeftTurnSignal;
-    shouldStillBlinkRightTurnSignal = prevTurnRightState == HIGH && !stillTurnsLeft && (preferences & Turn3x) != 0 ? 3 : shouldStillBlinkRightTurnSignal;
+    shouldStillBlinkLeftTurnSignal = prevTurnLeftState == HIGH && !stillTurnsRight && (currentState & Turn3x) != 0 ? 3 : shouldStillBlinkLeftTurnSignal;
+    shouldStillBlinkRightTurnSignal = prevTurnRightState == HIGH && !stillTurnsLeft && (currentState & Turn3x) != 0 ? 3 : shouldStillBlinkRightTurnSignal;
     timer.cancel();
   }
   return false;// true to repeat the action - false to stop
@@ -469,7 +472,7 @@ void loopTurnSignals(){
    || shouldTurnRight != HIGH && prevTurnRightState == HIGH)) {
     timer.cancel();
     prevTurnLeftState = prevTurnRightState = LOW;
-    digitalWriteStatesToPins(oTurnLeft, LOW, oPositionLeft, LOW, oTurnRight, LOW, oPositionRight, LOW);
+    digitalWriteStateToPins(oTurnLeft, LOW, oPositionLeft, LOW, oTurnRight, LOW, oPositionRight, LOW);
     updateLedLight();
   }
 }
