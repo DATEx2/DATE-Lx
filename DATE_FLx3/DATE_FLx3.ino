@@ -65,9 +65,11 @@ bool blinkOn(void *argument /* optional argument given to in/at/every */) {
   bool shouldTurnLeft = digitalRead(iTurnLeft) == HIGH, shouldTurnRight = digitalRead(iTurnRight) == HIGH;
   if (shouldTurnRight) { shouldStillBlinkLeftTurnSignal = 0; }
   if (shouldTurnLeft) { shouldStillBlinkRightTurnSignal = 0; }
-  
-  if (!shouldTurnLeft && prevTurnLeftState && !shouldTurnRight) { shouldStillBlinkLeftTurnSignal = 3; }
-  if (!shouldTurnRight && prevTurnRightState && !shouldTurnLeft) { shouldStillBlinkRightTurnSignal = 3; }
+
+  if ((currentState & Turn3x) != 0) {
+    if (!shouldTurnLeft && prevTurnLeftState && !shouldTurnRight) { shouldStillBlinkLeftTurnSignal = 3; }
+    if (!shouldTurnRight && prevTurnRightState && !shouldTurnLeft) { shouldStillBlinkRightTurnSignal = 3; }
+  }
   if (shouldTurnLeft || shouldStillBlinkLeftTurnSignal > 0 && shouldStillBlinkLeftTurnSignal-- > 0) {
     currentBlink = (Blink)(currentBlink | TurnLeft);
   }
@@ -325,7 +327,6 @@ void multipleTap()
     case 3: {
         ///3* Toggle the white circle ON/OFF. Toggles the yellow circle ON/OFF
         ///OFF -> WHITE -> YELLOW -> OFF
-        
         int shouldDRL = digitalRead(oDRL) == HIGH;
         int shouldYRL = digitalRead(oYRL) == HIGH;
         if (shouldYRL) {    
@@ -458,13 +459,16 @@ void setup() {
   pinMode(oPositionLeft, OUTPUT); digitalWrite(oPositionLeft,LOW);
   pinMode(oPositionRight, OUTPUT);  digitalWrite(oPositionRight,LOW);
   pinMode(oLoudHorn, OUTPUT);  digitalWrite(oLoudHorn,LOW);
-
   updateLedLight();
   button.attachDoubleClick(doubleTap); button.attachClick(singleTap); 
   button.attachLongPressStop(longTap); button.attachMultiClick(multipleTap);
   sinceLastCommand = millis();
-  if ((int)readSavedState()==0) {
+  int previousSavedState = (int)readSavedState();
+  if (previousSavedState == 0 ) {
     saveState();
+  } else {
+    currentState = (State)(previousSavedState & (WLED | DRLFirstTap | YRLFlash | Turn3x | AutoRestore));
+    applyState();
   }
 
   blinkTimer.every(turnSignalIntervalOn + turnSignalIntervalOff, blinkOff);
@@ -493,5 +497,4 @@ void loop() {
   }
   blinkTimer.tick();
   autoOffTimerAfterDisplay.tick();
-
 }
