@@ -11,22 +11,22 @@ int oHighBeam = 11; // Output high beam
 int oLowBeam = 10;  // Output low beam
 int oYRL = 9;// Output circle YELLOW light
 int oDRL = 8;   // Output circle WHITE light
-int oLedRED = A2; // Output RED led button small circle
-int oLedGREEN = A5; // Output GREEN led button small circle
-int oLedBLUE = 2; // Output BLUE led button small circle
-int oCharger = 7; // Output phone charger
-int oTurnLeft = 4;//1102; // Output separate fluid left turn signal front side
-int oTurnRight = 12;//1104; // Output separate fluid left turn signal front side
+int oLedRED = 7; // Output RED led button small circle
+int oLedGREEN = 6; // Output GREEN led button small circle
+int oLedBLUE = 5; // Output BLUE led button small circle
+int oCharger = A2; // Output phone charger
+int oTurnLeft = 2; // Output separate fluid left turn signal front side
+int oTurnRight = 4; // Output separate fluid left turn signal front side
 int oPositionLeft = 3; // Output separate fluid left turn signal rear side "position light"
 int oPositionRight = 13; // Output separate fluid right turn signal rear side "position light"
-int oLoudHorn = 6; // Output loud horn
+int oLoudHorn = A5; // Output loud horn
 
 int iSmartButton = A4;  // Input switch rgb button "one touch"
 int iTurnLeft = A0; // Input left turn signal
-int iTurnRight = A1; // Input right turn signal 
-int iOriginalLightOn = A3; // Input original light
-int iHorn = A6; // Input horn
-int iDisplayOn = A7; // Input "display on"
+int iTurnRight = A3; // Input right turn signal 
+int iOriginalLightOn = A7; // Input original light
+int iHorn = A1; // Input horn
+int iDisplayOn = A6; // Input "display on"
 
 enum HeadLightState { ManualOff, AutoOff, ManualOn, AutoOn };
 HeadLightState headLightState = AutoOff;
