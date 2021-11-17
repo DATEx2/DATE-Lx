@@ -29,12 +29,14 @@ int iHorn = A6; // Input horn
 int iDisplayOn = A7; // Input "display on"
 
 enum HeadLightState { ManualOff, AutoOff, ManualOn, AutoOn };
-HeadLightState headLightState = AutoOff;
+HeadLightState headLightState = ManualOff;
 
 int lastDisplayOnState;
 
 int turnSignalIntervalOn = 550; //flash turn signal every ms
 int turnSignalIntervalOff = 350; //wait duration between two turn signals
+bool prevOriginalLightLowBeamState = false;
+bool prevOriginalLightState = false;
 bool prevTurnLeftState = false;
 bool prevTurnRightState = false;
 //how many flashes we still do (initally 1 = one flash when turns on)
@@ -215,12 +217,13 @@ void updateLedLight(){
 }
 void applyState(){
   bool isOn = (headLightState != AutoOff && headLightState != ManualOff);
-  if (!isOn && shouldStillBlinkLeftTurnSignal <= 0 && shouldStillBlinkRightTurnSignal <= 0) {
+  bool turnLeft = (currentBlink & TurnLeft) > 0;
+  bool turnRight = (currentBlink & TurnRight) > 0;
+  if (!isOn && shouldStillBlinkLeftTurnSignal <= 0 && shouldStillBlinkRightTurnSignal <= 0 && (!(turnLeft || turnRight)) ) {
      digitalWritePins(LOW, oHighBeam, oLowBeam, oYRL, oDRL, oCharger, oTurnLeft, oTurnRight, oPositionLeft, oPositionRight, oLoudHorn);
   }
   else {
-    bool turnLeft = (currentBlink & TurnLeft) > 0;
-    bool turnRight = (currentBlink & TurnRight) > 0;
+    
     bool positionTurnLeftShouldBeOff = (currentBlink & PositionTurnLeftShouldBeOff) > 0;
     bool positionTurnRightShouldBeOff = (currentBlink & PositionTurnRightShouldBeOff) > 0;
     bool positionShouldBeOn = isOn 
@@ -484,8 +487,28 @@ void checkHornState() {
     digitalWrite(oLoudHorn, LOW);
   }
 }
+void checkOriginalLigthState(){
+  if (analogRead(iOriginalLightOn) > 200) {
+    if (!prevOriginalLightState) {
+      prevOriginalLightState = true;
+      prevOriginalLightLowBeamState = (currentState & LowBeam) > 0;
+      currentState = (State)(currentState | LowBeam);
+      applyState();
+    }
+  }
+  else {
+    if (prevOriginalLightState) {
+      prevOriginalLightState = false;
+      if (!prevOriginalLightLowBeamState) {
+        currentState = (State)(currentState && ~LowBeam);
+      }
+      applyState();
+    }
+  }
+}
 void loop() {
   checkHornState();
+  checkOriginalLigthState();
   checkDisplayState();
   button.tick();
   blinkTimer.tick();
