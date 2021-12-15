@@ -53,7 +53,7 @@ unsigned long blinkForMs = 40; //the duratio of y ms to blink (for every 5s flas
 unsigned long blinkXTimes = 4; //how many times we should blink (for every 5s flashes)
 
 //store the YRL / DRL state to be saved/restored automatically
-enum State { None = 0, AutoRestore = 1, LowBeam = 2, HighBeam = 4, DRL = 8, YRL = 16, DRLFirstTap = 32, Charging = 64, WLED = 128, YRLFlash = 256, Turn3x = 512 };
+enum State { None = 0, AutoRestore = 1, LowBeam = 2, HighBeam = 4, DRL = 8, YRL = 16, DRLFirstTap = 32, Charging = 64, WLED = 128, YRLFlash = 256, Turn3x = 512, DisableHorn = 1024 };
 enum Blink { TurnSignalsOff = 0, TurnLeft = 1, TurnRight = 2, PositionTurnLeftShouldBeOff = 4, PositionTurnRightShouldBeOff = 8, BlinkFlash = 16, BlinkFlashYRL = 32 };
 State currentState = (State)(WLED | DRLFirstTap | YRLFlash | Turn3x | AutoRestore);
 Blink currentBlink = (Blink)(TurnSignalsOff);
@@ -406,6 +406,11 @@ void multipleTap()
        shouldStillBlinkLeftTurnSignal = shouldStillBlinkRightTurnSignal = (currentState & AutoRestore) != 0 ? 4 : 1;
      }
      break;
+     case 9: {
+      currentState = (State)(currentState ^ DisableHorn);
+      saveState();
+     }
+     break;
   }
 }
 void longTap() {
@@ -480,7 +485,7 @@ void setup() {
 }
 
 void checkHornState() {
-  if (analogRead(iHorn) > 200) {
+  if (analogRead(iHorn) > 200 && (currentState & DisableHorn) == 0) {
     digitalWrite(oLoudHorn, HIGH);
   }
   else {
@@ -508,7 +513,7 @@ void checkOriginalLigthState(){
 }
 void loop() {
   checkHornState();
-  checkOriginalLigthState();
+  //checkOriginalLigthState();
   checkDisplayState();
   button.tick();
   blinkTimer.tick();
