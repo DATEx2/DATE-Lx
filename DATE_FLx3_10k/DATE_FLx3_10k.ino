@@ -138,7 +138,8 @@ void digitalWriteStateToPins(int p0 = 0, int v0 = 0, int p1 = 0, int v1 = 0, int
 
 
 bool blinkLoop(unsigned long now) {
-  //Serial.printf("lastBlinkState %d\n", lastBlinkState);
+  Serial.print("lastBlinkState ");
+  Serial.println(lastBlinkState);
   switch (lastBlinkState % 2) {
     case 0://blink off, turn it on
       if (headLightState != ManualOff && headLightState != AutoOff)
@@ -190,7 +191,7 @@ void restoreState() {
     digitalWrite(oHighBeam, (currentState & HighBeam) != 0 ? HIGH : LOW);
     digitalWrite(oDRL, (currentState & DRL) != 0 ? HIGH : LOW);
     digitalWrite(oYRL, (currentState & YRL) != 0 ? HIGH : LOW);
-    digitalWrite(oCharger, (currentState & Charging) != 0 ? HIGH : LOW);
+    //digitalWrite(oCharger, (currentState & Charging) != 0 ? HIGH : LOW);
     headLightState = (currentState & (LowBeam | HighBeam | DRL | YRL)) != 0 ? AutoOn : AutoOff;
     if ((currentState & Turn3x) != 0) {
       shouldStillBlinkLeftTurnSignal = shouldStillBlinkRightTurnSignal = 2;
@@ -201,6 +202,7 @@ void restoreState() {
 }
 bool checkAutoOff() {
   unsigned long now = millis();
+  //blinkLoop(now);
   bool turnOffTimeout = now >= (sinceLastCommand + TurnOffAfterMilisecondsEvenWhenDisplayIsStillOn);
   if (turnOffTimeout
       && (headLightState == ManualOn || headLightState == AutoOn)) {
@@ -211,7 +213,8 @@ bool checkAutoOff() {
     return true;
   }
 
-  if ((currentState & YRLFlash) > 0 && blinkLoop(now)) {
+  if (//(currentState & YRLFlash) == 0 && 
+    blinkLoop(now)) {
     return true;
   }
   return false;
@@ -280,7 +283,7 @@ void applyState() {
   }
   lastTimeTurnOffTimeout = turnOffTimeout;
   if (turnOffTimeout && shouldStillBlinkLeftTurnSignal <= 0 && shouldStillBlinkRightTurnSignal <= 0) {
-    digitalWritePins(LOW, oBrake, oRLx1, oHighBeam, oLowBeam, oYRL, oDRL, oCharger, oTurnLeft, oTurnRight, oPositionFront, oLoudHorn);
+    digitalWritePins(LOW, oBrake, oRLx1, oHighBeam, oLowBeam, oYRL, oDRL, /*oCharger,*/ oTurnLeft, oTurnRight, oPositionFront, oLoudHorn);
 
   }
   else {
@@ -308,10 +311,10 @@ void applyState() {
     }
     else if (shouldBlink) {// && positionShouldBeOn) {
       //Serial.printf("isOn %d, currentBlink %d, shouldBlink %d, shouldBlinkYRL %d, turnLeft %d, turnRight %d, positionTurnLeftShouldBeOff %d, positionTurnRightShouldBeOff %d\n", isOn, currentBlink, shouldBlink, shouldBlinkYRL, turnLeft, turnRight, positionTurnLeftShouldBeOff, positionTurnRightShouldBeOff);
-//      digitalWriteStateToPins(oYRL, shouldBlinkYRL ? HIGH : LOW,
-//                              oPositionFront, shouldBlinkYRL ? HIGH : LOW,
-//                              oBrake, shouldBlinkYRL ? HIGH : LOW,
-//                              oTurnLeft, HIGH, oTurnRight, HIGH);//,
+      digitalWriteStateToPins(oYRL, shouldBlinkYRL ? HIGH : LOW,
+                              oPositionFront, shouldBlinkYRL ? HIGH : LOW,
+                              oBrake, shouldBlinkYRL ? HIGH : LOW,
+                              oTurnLeft, HIGH, oTurnRight, HIGH);//,
       //oPositionFront, shouldBlinkYRL ? HIGH : LOW);
     } else {
       digitalWriteStateToPins(oDRL, (currentState & DRL) != 0 ? HIGH : LOW,
@@ -482,7 +485,7 @@ void longTap() {
   saveState();
   //sinceLastCommand = (unsigned long)(millis() + 365 * 24 * 60 * 60 * 1000);
   headLightState = ManualOff; //manual off
-  currentState = (State)(currentState & ~(LowBeam | HighBeam | DRL | YRL | Charging));//turn off LowBeam, HighBeam, DRL, YRL, Charging flag
+  currentState = (State)(currentState & ~(LowBeam | HighBeam | DRL | YRL /*| Charging*/));//turn off LowBeam, HighBeam, DRL, YRL, Charging flag
   if ((currentState & Turn3x) != 0) {
     shouldStillBlinkLeftTurnSignal = 2;
     shouldStillBlinkRightTurnSignal = 2;
@@ -585,14 +588,14 @@ void loop() {
   //checkDisplayState();
   button.tick();
   blinkTimer.tick();
-  checkAutoOff();
-  //  switch (headLightState)
-  //  {
-  //    case AutoOn:
-  //    case ManualOn:
-  //      if (checkAutoOff()) return;
-  //    break;
-  //  }
+  //checkAutoOff();
+    switch (headLightState)
+    {
+      case AutoOn:
+      case ManualOn:
+        if (checkAutoOff()) return;
+          break;
+    }
   applyState();
   autoOffTimerAfterDisplay.tick();
 
