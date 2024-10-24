@@ -20,7 +20,7 @@ int oTurnRight = 7;//1104; // Output separate fluid left turn signal front side
 int oPositionFront = 8; // Output separate fluid right turn signal rear side "position light"
 int oLoudHorn = 5; // Output loud horn
 
-int oRLx1 = 11;  // RLX1 power (position)
+int oPOLICE = 11;  // RLX1 power (position)
 int oBrake = 10; // Output brake RLX1
 
 int iSmartButton = A2;  // Input switch rgb button "one touch"
@@ -42,6 +42,7 @@ bool prevOriginalLightLowBeamState = false;
 bool prevOriginalLightState = false;
 bool prevTurnLeftState = false;
 bool prevTurnRightState = false;
+bool POLICE = false;
 //how many flashes we still do (initally 1 = one flash when turns on)
 int shouldStillBlinkLeftTurnSignal = 2, shouldStillBlinkRightTurnSignal = 2;
 unsigned long ShutDownAfterDisplayInSecondsAfterDisplayTurnsOff = 3; //should be 10s. auto off when the display is turned off
@@ -52,7 +53,7 @@ unsigned long sinceLastCommand; //last millis date/time of the last command (whe
 unsigned long lastBlink; //the millis when we blinked last time (for every 5s flashes)
 unsigned long lastBlinkState = 0; //the sate we had last time (for every 5s flashes, so we can flash multiple times)
 unsigned long blinkEveryMs = 5000;//every x ms to blink (for every 5s flashes e.g. 5000ms for 5s)
-unsigned long blinkForMs = 40; //the duratio of y ms to blink (for every 5s flashes)
+unsigned long blinkForMs = 50; //the duratio of y ms to blink (for every 5s flashes)
 unsigned long blinkXTimes = 4; //how many times we should blink (for every 5s flashes)
 
 //store the YRL / DRL state to be saved/restored automatically
@@ -138,7 +139,7 @@ void digitalWriteStateToPins(int p0 = 0, int v0 = 0, int p1 = 0, int v1 = 0, int
 
 
 bool blinkLoop(unsigned long now) {
-//  Serial.printf("lastBlinkState %d\n", lastBlinkState);
+  //Serial.printf("lastBlinkState %d\n", lastBlinkState);
   switch (lastBlinkState % 2) {
     case 0://blink off, turn it on
       if (headLightState != ManualOff && headLightState != AutoOff)
@@ -280,7 +281,7 @@ void applyState() {
   }
   lastTimeTurnOffTimeout = turnOffTimeout;
   if (turnOffTimeout && shouldStillBlinkLeftTurnSignal <= 0 && shouldStillBlinkRightTurnSignal <= 0) {
-    digitalWritePins(LOW, oBrake, oRLx1, oHighBeam, oLowBeam, oYRL, oDRL, oCharger, oTurnLeft, oTurnRight, oPositionFront, oLoudHorn);
+    digitalWritePins(LOW, oBrake, /*oPOLICE,*/ oHighBeam, oLowBeam, oYRL, oDRL, oCharger, oTurnLeft, oTurnRight, oPositionFront, oLoudHorn);
 
   }
   else {
@@ -292,7 +293,7 @@ void applyState() {
     bool shouldBlink = (currentBlink & BlinkFlash) > 0;
     bool shouldBlinkYRL = (currentBlink & BlinkFlashYRL) > 0;
 
-    digitalWriteStateToPins(oRLx1, HIGH,
+    digitalWriteStateToPins(oPOLICE, POLICE ? HIGH : LOW,
                             oBrake, brake ? HIGH : LOW);
 
     if (turnLeft || turnRight || positionTurnLeftShouldBeOff || positionTurnRightShouldBeOff) {
@@ -310,8 +311,8 @@ void applyState() {
       //Serial.printf("isOn %d, currentBlink %d, shouldBlink %d, shouldBlinkYRL %d, turnLeft %d, turnRight %d, positionTurnLeftShouldBeOff %d, positionTurnRightShouldBeOff %d\n", isOn, currentBlink, shouldBlink, shouldBlinkYRL, turnLeft, turnRight, positionTurnLeftShouldBeOff, positionTurnRightShouldBeOff);
       digitalWriteStateToPins(oYRL, shouldBlinkYRL ? HIGH : LOW,
                               oPositionFront, shouldBlinkYRL ? HIGH : LOW,
-                              oBrake, LOW,
-                              oTurnLeft, HIGH, oTurnRight, HIGH);//,
+                              oBrake, shouldBlinkYRL ? HIGH : LOW,
+                              oTurnLeft, LOW, oTurnRight, LOW);//,
       //oPositionFront, shouldBlinkYRL ? HIGH : LOW);
     } else {
       digitalWriteStateToPins(oDRL, (currentState & DRL) != 0 ? HIGH : LOW,
@@ -392,7 +393,12 @@ void multipleTap()
   headLightState = ManualOn;
   int clicks = button.getNumberClicks();
   switch (clicks) {
-    case 3: {
+    case 3:  {
+      POLICE = POLICE ? false : true;
+      applyState();
+      break;
+    }
+    case 4: {
         ///3* Toggle the white circle ON/OFF. Toggles the yellow circle ON/OFF
         ///OFF -> WHITE -> YELLOW -> OFF
         int shouldDRL = digitalRead(oDRL) == HIGH;
@@ -420,7 +426,7 @@ void multipleTap()
         saveState();
         break;
       }
-    case 4: {
+    case 5: {
         ///4* pressing once on the button when the headlight is off, will turn on only the DRL.
         ///This can be useful during the day when you don't want to consume power with the low beam.
         ///Disabling this feature will skip the DRL step and start the low beam directly
@@ -430,7 +436,7 @@ void multipleTap()
         shouldStillBlinkLeftTurnSignal = shouldStillBlinkRightTurnSignal = (currentState & DRLFirstTap) != 0 ? 2 : 1;
       }
       break;
-    case 5: {
+    case 6: {
         ///5* The One Touch button is always "ON" as long as the battery key is ON, especially useful
         /// to see where the button is in the dark or e.g. when you suddenly enter a tunnel.
         /// However, at times, this might not be useful, so you could turn this feature off
@@ -440,7 +446,7 @@ void multipleTap()
         shouldStillBlinkLeftTurnSignal = shouldStillBlinkRightTurnSignal = (currentState & WLED) != 0 ? 2 : 1;
       }
       break;
-    case 6: {
+    case 7: {
         ///6* The headlamp flashes the yellow circle every 5 seconds as the car drivers mostly notice
         ///the changes in their landscape. This is a safety feature. However it could be considered
         ///annoying to some, and hence it can be easily toggled when needed.
@@ -449,7 +455,7 @@ void multipleTap()
         shouldStillBlinkLeftTurnSignal = shouldStillBlinkRightTurnSignal = (currentState & YRLFlash) != 0 ? 2 : 1;
       }
       break;
-    case 7: {
+    case 8: {
         ///7* the turn signals will have an extra 3 blinkers after you stop them. This can be very helpful
         /// as you turn them on and quickly off but the other participants can still see your intention.
         ///Many cars have this feature, however, it can be turned off when not desired.
@@ -460,7 +466,7 @@ void multipleTap()
         shouldStillBlinkLeftTurnSignal = shouldStillBlinkRightTurnSignal = (currentState & Turn3x) != 0 ? 3 : 1;
       }
       break;
-    case 8: {
+    case 9: {
         ///8* when the AUTO ON/OFF is turned on, the headlight state is automatically saved/restored when
         /// the display turns on/off. This includes all the states
         ///Turning off this feature means every time you need to manually turn on/off the headlight,
@@ -471,7 +477,7 @@ void multipleTap()
         shouldStillBlinkLeftTurnSignal = shouldStillBlinkRightTurnSignal = (currentState & AutoRestore) != 0 ? 4 : 1;
       }
       break;
-    case 9: {
+    case 10: {
         currentState = (State)(currentState ^ DisableHorn);
         saveState();
       }
@@ -499,7 +505,7 @@ bool autoTurnOff(void *argument /* optional argument given to in/at/every */) {
 //void checkDisplayState() {
 //  int displayOnState = analogRead(iDisplayOn) > 200;
 //  if (displayOnState != lastDisplayOnState) {
-//    lastDisplayOnState = displayOnState;
+//   lastDisplayOnState = displayOnState;
 //    if (displayOnState) {
 //      restoreState();
 //      autoOffTimerAfterDisplay.cancel();
@@ -518,8 +524,8 @@ bool autoTurnOff(void *argument /* optional argument given to in/at/every */) {
 
 void setup() {
 
-  pinMode(oRLx1, OUTPUT);
-  digitalWrite(oRLx1, HIGH);
+  pinMode(oPOLICE, OUTPUT);
+  digitalWrite(oPOLICE, LOW);
     Serial.begin(9600); // Input pins
   pinMode(iSmartButton, INPUT); pinMode(iTurnLeft, INPUT); pinMode(iTurnRight, INPUT); pinMode(iHorn, INPUT); //pinMode(iDisplayOn, INPUT);
   // Output pins
